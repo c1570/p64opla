@@ -23,10 +23,25 @@ Pronounced **picoPLA**. Stylizing as 'p64oPLA' makes this better to search for, 
 
 # Building
 
-* wire GPIO0-15 to PLA pins 2-9 and 20-27; wire GPIO16-23 to PLA pins 10-13 and 15-18; connect 5V/Vbus to PLA pin 28; connect GND to PLA pin 14 and PLA pin 19
+* wiring the RP2040 board and PLA
+  * connect GPIO0-7 to PLA pins 2-9
+  * connect GPIO8-15 to PLA pins 20-27
+  * connect GPIO16-19 to PLA pins 10-13
+  * connect GPIO20-23 to PLA pins 15-18
+  * connect 5V/Vbus to PLA pin 28
+  * connect GND to PLA pin 14 and PLA pin 19
+  * leave PLA pin 1 unconnected
 * note the original Pico board does not expose GPIO23; "RGB LED" RP2040 boards do though (disable the RGB LED there though by unsoldering the "RGB" jumper)
 
-Designing a dedicated PCB would be nice at some point.
+## PCB
+
+Designing a dedicated PCB would be nice at some point...
+
+## Test clips
+
+For the live test mode, you'll want some way to connect 26 wires (PLA pin 19 is not needed then) to the PLA in the C64 reliably which can be arduous.
+You can 3D print [dip_clip_28p.stl](/hardware/dip_clip_28p.stl) twice and build an 28 pin DIP test clip from that.
+The STL file has been generated from ["DIP IC Test Clip"](https://www.thingiverse.com/thing:4690158/) by Andy Anderson (CC-BY license) using settings `ic_pin_count = 28` and `ic_width = 14`.
 
 # Implementation notes
 This simply looks up output values using an array using the CPU cores, overclocked to 400MHz.
@@ -45,7 +60,7 @@ A PIO/DMA variant of this was also in testing (similar to [cknave's C64 Pico RAM
 * The other DMA channel fetches the result byte from the lookup table and writes it to another PIO
 * Other PIO writes to GPIOs
 
-(One could actually omit using the PIOs but unfortunately SIO GPIO control registers are only available to the CPU cores (not DMA).)
+(One could actually omit using the PIOs but unfortunately SIO GPIO control registers are only available to the CPU cores, not DMA.)
 
 However, this has a rather long latency along these lines:
 * 1 cycle input GPIO pad
@@ -56,7 +71,7 @@ However, this has a rather long latency along these lines:
 * 1 cycle output PIO
 * 1 cycle output GPIO pad
 
-Also, there's a lot of jitter, probably because PIO FIFO reads/writes and DMA control writes all go via a single AHB port.
+Also, there's a lot of jitter, probably because PIO FIFO reads/writes and DMA control writes all go through a single AHB port.
 
 Perhaps RP2350 improves this, but I doubt it.
 
