@@ -18,18 +18,19 @@ const uint LED_PIN = 25;
 const uint BUTTON_PIN = 24;
 const uint MODE_PIN = 26;
 
+void blink_led(const uint flashes, const uint on_ms, const uint off_ms, const uint after_ms) {
+  for(uint i = 1; i <= flashes; i++) {
+    gpio_put(LED_PIN, 1);
+    busy_wait_us(on_ms * 1000);
+    gpio_put(LED_PIN, 0);
+    busy_wait_us(off_ms * 1000);
+  }
+  busy_wait_us(after_ms * 1000);
+}
+
 static void selftest(const uint pin_start, const uint pin_end) {
   // short/stuck detection: sets all pins to pullup, shifts one LOW through pins,
   // blinks if more than one pin is low during that
-  void signal_pin_broken(const uint pin) {
-    for(uint i = 0; i <= pin; i++) { // blink 1 time for GPIO 0, etc.
-      gpio_put(LED_PIN, 1);
-      busy_wait_us(500000);
-      gpio_put(LED_PIN, 0);
-      busy_wait_us(200000);
-    }
-    busy_wait_us(800000);
-  }
   gpio_put(LED_PIN, 0);
   gpio_set_dir(LED_PIN, GPIO_OUT);
   for(uint pin = pin_start; pin <= pin_end; pin++) {
@@ -47,10 +48,10 @@ static void selftest(const uint pin_start, const uint pin_end) {
       uint32_t gpios_in = gpio_get_all() & mask_our_pins;
       if(gpios_in != (mask_our_pins - (1 << pin))) {
         // we expected only one GPIO low but don't see that: there's some short
-        signal_pin_broken(pin); // start signaling with output pin number
+        blink_led(pin + 1, 500, 200, 800); // start signaling with output pin number
         for(uint test = 0; test <= pin_end; test++) {
           if(test != pin) {
-            if(!(gpios_in & 1)) signal_pin_broken(test);
+            if(!(gpios_in & 1)) blink_led(test + 1, 500, 200, 800); // blink 1 time for GPIO 0, etc.
             found_error = true;
           }
           gpios_in >>= 1;
@@ -60,10 +61,7 @@ static void selftest(const uint pin_start, const uint pin_end) {
       gpio_set_dir(pin, GPIO_IN);
     }
     if(!found_error) {
-      gpio_put(LED_PIN, 1);
-      busy_wait_us(5000000);
-      gpio_put(LED_PIN, 0);
-      busy_wait_us(100000);
+      blink_led(1, 5000, 100, 0);
     } else {
       gpio_put(LED_PIN, 0);
       busy_wait_us(4000000);
@@ -133,21 +131,12 @@ static void platest_offline() {
       if(!correct) {
         printf("Test pattern 0b%016b, expected 0b%08b, got 0b%08b\n", i, expected_out, actual_out);
         failure = true;
-        for(uint i = 0; i < 5; i++) {
-          gpio_put(LED_PIN, 1);
-          busy_wait_us(150000);
-          gpio_put(LED_PIN, 0);
-          busy_wait_us(150000);
-        }
-        busy_wait_us(200000);
+        blink_led(5, 150, 150, 200);
       }
     }
     if(!failure) {
       printf("Test passed successfully\n");
-      gpio_put(LED_PIN, 1);
-      busy_wait_us(5000000);
-      gpio_put(LED_PIN, 0);
-      busy_wait_us(100000);
+      blink_led(1, 5000, 100, 0);
     }
   }
 }
