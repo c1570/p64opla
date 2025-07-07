@@ -6,6 +6,7 @@
 #include "pico/stdlib.h"
 #include "pico/sync.h"
 #include "pico/multicore.h"
+#include "hardware/pio.h"
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 #include "hardware/structs/sio.h"
@@ -103,6 +104,57 @@ static void platest_live() {
   }
 }
 
+static inline int __attribute__((always_inline)) get_signal_latency(uint trigger_pin, uint measure_pin, bool trigger_on_posedge, bool wait_for_posedge) {
+  // set up pin states in PIO before switching GPIO functions to PIO
+  pio_sm_set_consecutive_pindirs(pio0, 0, trigger_pin, 1, true);
+  pio_sm_set_pins(pio0, 0, (!trigger_on_posedge) << trigger_pin);
+  pio_sm_set_consecutive_pindirs(pio0, 0, measure_pin, 1, false);
+  // save previous pin functions, then switch functions to PIO
+  enum gpio_function func_trigger = gpio_get_function(trigger_pin);
+  gpio_set_function(trigger_pin, GPIO_FUNC_PIO0);
+  enum gpio_function func_measure = gpio_get_function(measure_pin);
+  gpio_set_function(measure_pin, GPIO_FUNC_PIO0);
+  busy_wait_us(10); // wait for things to settle
+
+  pio0->instr_mem[0] = pio_encode_set(pio_pins, trigger_on_posedge);
+  pio0->instr_mem[1] = pio_encode_in(pio_pins, 1);
+  pio_sm_config measure_sm_config = pio_get_default_sm_config();
+  sm_config_set_wrap(&measure_sm_config, 1, 1); // loop on IN instruction
+  sm_config_set_in_pins(&measure_sm_config, measure_pin);
+  sm_config_set_in_shift(&measure_sm_config, false /* true: shift ISR right */,
+                         true /* autopush */, 32 /* autopush threshold */);
+  sm_config_set_set_pins(&measure_sm_config, trigger_pin, 1);
+  sm_config_set_clkdiv(&measure_sm_config, 1);
+  pio_sm_init(pio0, 0, 0 /* SM start instruction addr */, &measure_sm_config);
+  pio_sm_set_enabled(pio0, 0, true);
+
+  int cycles = 0;
+  while(1) {
+    uint32_t p = pio_sm_get_blocking(pio0, 0);
+    if(!wait_for_posedge) p = ~p;
+    if(__builtin_expect(!p, 1)) { // fast path has to be faster than 32 cycles
+      cycles += 32;
+      if(cycles >> 22) { // timeout after about 10ms
+        cycles = -1;
+        break;
+      }
+      continue;
+    } else {
+      cycles += __builtin_clz(p); // count leading zero bits
+      break;
+    }
+  }
+
+  pio_sm_set_enabled(pio0, 0, false);
+  pio_sm_clear_fifos(pio0, 0);
+  // restore previous GPIO functions (SIO in this case)
+  gpio_set_function(trigger_pin, func_trigger);
+  gpio_set_function(measure_pin, func_measure);
+  busy_wait_us(2);
+
+  return cycles;
+}
+
 static void platest_offline() {
   // external PLA test: connect p64opla parallel to another PLA standalone,
   // run this test, and LED will light if the other PLA behaves incorrectly.
@@ -121,6 +173,23 @@ static void platest_offline() {
   }
   stdio_init_all();
   while(1) {
+    gpio_put_masked(0xffff, 0 | (1<<7) | (1<<14)); // $0000 RAM read access, CAS inactive, BA active
+    float lat_min = -1;
+    float lat_max = -1;
+    for(uint i = 0; i < 10; i++) {
+      int latency = get_signal_latency(7, 23, false, false); // enable CAS, wait for CASRAM to go active
+      if(latency < lat_min || lat_min == -1) lat_min = latency;
+      if(latency > lat_max || lat_max == -1) lat_max = latency;
+    }
+    // at 400MHz, RP2040 pin to pin latency is 5 cycles
+    lat_min = lat_min >= 5 ? ((float) lat_min - 5) * (1000000.0 / SYS_CLOCK_KHZ) : -1;
+    lat_max = lat_max >= 5 ? ((float) lat_max - 5) * (1000000.0 / SYS_CLOCK_KHZ) : -1;
+    if(lat_min >= 0) {
+      printf("CASRAM latency: %.1f to %.1f nanoseconds\n", lat_min, lat_max);
+    } else {
+      printf("Could not measure CASRAM latency\n");
+    }
+
     bool failure = false;
     for(uint i = 0; i < 0x10000; i++) {
       gpio_put_masked(0xffff, i);

@@ -13,13 +13,13 @@ Pronounced **picoPLA**. Stylizing as 'p64oPLA' makes this better to search for, 
 * simple hardware variant can be built using a spare IC socket and a few wires
 * extra modes
   * **selftest** (GPIO26 grounded): Checks for shorts on GPIO pins, blinks GPIO num+1 times (GPIO2 = 3 flashes) in case of problems on that line. If no error found, turns LED on for five seconds, off for 100ms, repeat.
-  * **offline PLA test** (GPIO26 and GPIO24 grounded): Checks a PLA connected in parallel for errors. LED will blink on errors. If no error found, turns LED on for five seconds, off for 100ms, repeat. Problems will be reported in text via USB serial.
+  * **offline PLA test** (GPIO26 and GPIO24 grounded): Checks a PLA connected in parallel for errors. LED will blink on errors. If no error found, turns LED on for five seconds, off for 100ms, repeat. Problems as well as **measured CASRAM latency** will be reported in text via USB serial.
   * **live PLA test** (GPIO24 grounded): If connected to a PLA seated in a C64, will check those PLA's outputs while the C64 is powered on. Make sure p64oPLA is not connected via USB then (otherwise current would flow from USB into the C64). LED will light on errors, otherwise the LED will stay off.
 
 * Line delay is very similar to the original PLA.
 * In contrast to most replacements, all signal lines exhibit the appropriate signal delay, not only CASRAM.
 * There are no glitches (EPROM PLA, I'm looking at you).
-* However, this implementation exhibits some delay jitter (signal delay is about 25-35ns).
+* However, this implementation exhibits some delay jitter (signal delay is about 30-42ns).
 
 # Building
 
